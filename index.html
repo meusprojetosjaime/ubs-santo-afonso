@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UBS Santo Afonso - AI Assistant</title>
+    
+    <!-- Bibliotecas Externas (CDNs) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- React e Babel para rodar JSX direto no navegador -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Configuração Tailwind -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              neon: {
+                400: '#4ade80', // Green-400
+                500: '#22c55e', // Green-500
+                glow: 'rgba(74, 222, 128, 0.5)'
+              },
+              dark: {
+                900: '#0a0a0a',
+                800: '#171717',
+                700: '#262626'
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'fade-in': 'fadeIn 0.5s ease-out',
+            },
+            keyframes: {
+                fadeIn: {
+                    '0%': { opacity: '0', transform: 'translateY(10px)' },
+                    '100%': { opacity: '1', transform: 'translateY(0)' },
+                }
+            }
+          },
+        },
+      }
+    </script>
+
+    <!-- Estilos Globais -->
+    <style>
+      body {
+        background-color: #050505;
+        color: #e5e5e5;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0a0a0a; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #262626; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #4ade80; 
+      }
+      .neon-text-shadow {
+        text-shadow: 0 0 10px rgba(74, 222, 128, 0.7), 0 0 20px rgba(74, 222, 128, 0.5);
+      }
+      
+      /* Estilos de Impressão (PDF/Papel) */
+      @media print {
+        @page { margin: 0; size: A4; }
+        body * {
+            visibility: hidden;
+        }
+        #prescription-paper, #prescription-paper * {
+            visibility: visible;
+        }
+        #prescription-paper {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100vh;
+            margin: 0;
+            padding: 15mm !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            background: white !important;
+            color: black !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .bg-gray-100 { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; }
+        .bg-blue-50 { background-color: #eff6ff !important; -webkit-print-color-adjust: exact; }
+        .bg-blue-100 { background-color: #dbeafe !important; -webkit-print-color-adjust: exact; }
+      }
+    </style>
+
+    <!-- Google GenAI Import Map -->
+    <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Aplicação Principal -->
+    <script type="text/babel" data-presets="react,typescript" data-type="module">
+      import { GoogleGenAI } from "@google/genai";
+      const { useState, useEffect, useRef } = React;
+
+      // --- CONFIGURAÇÃO API ---
+      const API_KEY = "AIzaSyBWatdlO1sSVa-0H00vQIKp-d7mXHISVRY"; 
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const UBS_NAME = "UBS SANTO AFONSO";
+
+      // --- COMPONENTES UI (NeonUI) ---
+      
+      const NeonButton = ({ children, variant = 'primary', icon, className = '', ...props }) => {
+        const baseStyle = "relative overflow-hidden font-bold uppercase tracking-wider transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 rounded-lg flex items-center justify-center gap-2 px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed";
+        
+        const variants = {
+          primary: "bg-black text-neon-400 border border-neon-500 shadow-[0_0_15px_rgba(74,222,128,0.4)] hover:shadow-[0_0_30px_rgba(74,222,128,0.7)] hover:text-white hover:bg-neon-500",
+          secondary: "bg-dark-800 text-gray-300 border border-gray-600 hover:border-neon-400 hover:text-neon-400",
+          danger: "bg-black text-red-500 border border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.7)] hover:bg-red-600 hover:text-white"
+        };
+
+        return (
+          <button className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>
+            {icon && <span className="text-xl">{icon}</span>}
+            {children}
+          </button>
+        );
+      };
+
+      const NeonCard = ({ children, className = '', title }) => {
+        return (
+          <div className={`bg-dark-800/80 backdrop-blur-md border border-neon-500/30 rounded-xl p-6 shadow-[0_0_15px_rgba(0,0,0,0.5)] hover:shadow-[0_0_20px_rgba(74,222,128,0.15)] transition-shadow duration-500 ${className}`}>
+            {title && (
+              <h3 className="text-xl font-bold text-neon-400 mb-4 border-b border-neon-500/20 pb-2 neon-text-shadow">
+                {title}
+              </h3>
+            )}
+            {children}
+          </div>
+        );
+      };
+
+      const NeonLoader = () => (
+        <div className="flex items-center justify-center space-x-2 animate-pulse">
+          <div className="w-3 h-3 bg-neon-500 rounded-full"></div>
+          <div className="w-3 h-3 bg-neon-400 rounded-full"></div>
+          <div className="w-3 h-3 bg-neon-500 rounded-full"></div>
+        </div>
+      );
+
+      // --- ÍCONES ---
+      const Icons = {
+        Send: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>,
+        Dashboard: () => "📊",
+        Triage: () => "🏥",
+        Chat: () => "💬",
+        Docs: () => "📝",
+        Alert: () => "⚠️",
+        Pill: () => "💊",
+        Syringe: () => "💉",
+        Print: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>,
+        Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      };
+
+      // --- SERVIÇO GEMINI ---
+      const SYSTEM_INSTRUCTION = `
+      Você é um assistente virtual de inteligência artificial avançado especializado em saúde primária, designado para auxiliar a equipe da UBS Santo Afonso.
+      Suas responsabilidades incluem:
+      1. Auxiliar na triagem de pacientes baseada em sintomas relatados (Protocolo de Manchester adaptado).
+      2. Fornecer resumos claros de quadros clínicos e traduções de termos médicos.
+      3. Sugerir condutas baseadas em diretrizes gerais de saúde.
+      4. Ajudar na redação de encaminhamentos e prescrições.
+
+      IMPORTANTE: Sempre inclua um aviso de isenção de responsabilidade (disclaimer). A decisão final é sempre do profissional humano.
+      `;
+
+      const sendMessageToGemini = async (currentMessage, history) => {
+        try {
+          const modelId = 'gemini-2.5-flash';
+          const chatHistory = history.map(msg => ({
+            role: msg.role === 'user' ? 'user' : 'model',
+            parts: [{ text: msg.text }],
+          }));
+
+          const chat = ai.chats.create({
+            model: modelId,
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              temperature: 0.7,
+            },
+            history: chatHistory
+          });
+
+          const result = await chat.sendMessage({
+            message: currentMessage
+          });
+
+          return result.text;
+        } catch (error) {
+          console.error("Erro ao comunicar com Gemini:", error);
+          return "Erro na comunicação com a IA. Verifique sua conexão.";
+        }
+      };
+
+      // --- COMPONENTES DA APLICAÇÃO ---
+
+      // 1. DASHBOARD
+      const DashboardSection = ({ onNavigate, onQuickAction }) => {
+        return (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <NeonCard title="Acesso Rápido" className="col-span-1 md:col-span-2">
+                <p className="text-gray-400 mb-4">Selecione uma ação para iniciar:</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <NeonButton 
+                    variant="secondary" 
+                    onClick={() => {
+                      onNavigate('ASSISTANT');
+                      onQuickAction("Quais são os protocolos atuais do Ministério da Saúde para manejo da COVID-19 na Atenção Primária? Inclua critérios de isolamento e sinais de alarme.");
+                    }}
+                    className="border-green-500/50 hover:bg-green-900/20"
+                  >
+                    🦠 Protocolo COVID-19
+                  </NeonButton>
+
+                  <NeonButton 
+                    variant="secondary" 
+                    onClick={() => onNavigate('PRESCRIPTION')}
+                    className="border-blue-500/50 hover:bg-blue-900/20 text-blue-300 hover:text-blue-100"
+                  >
+                    💊 Prescrição Médica
+                  </NeonButton>
+
+                  <NeonButton 
+                    variant="secondary" 
+                    onClick={() => {
+                      onNavigate('ASSISTANT');
+                      onQuickAction("Solicito protocolo técnico para ADMINISTRAÇÃO DE MEDICAMENTO. Atue como guia para TÉCNICO DE ENFERMAGEM. Aguarde eu informar o nome do fármaco e a via. Quando eu informar, forneça: 1. O que é (Indicação). 2. Diluição e Preparo (Rígido). 3. Passo a Passo Técnico da Administração. 4. Cuidados e Reações Adversas. Qual medicamento devo consultar?");
+                    }}
+                    className="border-purple-500/50 hover:bg-purple-900/20 text-purple-300 hover:text-purple-100"
+                  >
+                    <Icons.Syringe /> Protocolo Medicação
+                  </NeonButton>
+
+                  <NeonButton variant="secondary" onClick={() => {
+                      onNavigate('ASSISTANT');
+                      onQuickAction("Quais são os protocolos atuais para suspeita de Dengue? Inclua a classificação de risco.");
+                  }}>
+                    🦟 Protocolo Dengue
+                  </NeonButton>
+                </div>
+              </NeonCard>
+
+              <NeonCard title="Status do Sistema">
+                <div className="flex flex-col items-center justify-center h-full space-y-4">
+                  <div className="w-24 h-24 rounded-full border-4 border-neon-500 shadow-[0_0_20px_rgba(74,222,128,0.5)] flex items-center justify-center bg-black relative">
+                    <span className="text-neon-400 font-bold text-xl animate-pulse">ONLINE</span>
+                    <div className="absolute inset-0 rounded-full border border-neon-400 opacity-20 animate-ping"></div>
+                  </div>
+                  <p className="text-sm text-gray-400">Gemini 2.5 Flash Ativo</p>
+                </div>
+              </NeonCard>
+            </div>
+
+            <NeonCard title="Avisos Importantes">
+              <div className="flex items-start gap-4 bg-yellow-900/20 p-4 rounded-lg border border-yellow-700/50">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <h4 className="font-bold text-yellow-500">Atenção Profissional</h4>
+                  <p className="text-gray-300 text-sm mt-1">
+                    Ferramenta de apoio à decisão clínica. <strong>Não substitui o julgamento profissional.</strong>
+                  </p>
+                </div>
+              </div>
+            </NeonCard>
+          </div>
+        );
+      };
+
+      // 2. TRIAGEM
+      const TriageSection = ({ onAnalyze, onNavigateToChat }) => {
+        const [symptoms, setSymptoms] = useState('');
+        const [vitals, setVitals] = useState('');
+        const [triageResult, setTriageResult] = useState(null);
+        const [isAnalyzing, setIsAnalyzing] = useState(false);
+        const [riskColor, setRiskColor] = useState('gray');
+
+        const determineColor = (text) => {
+          const lowerText = text.toLowerCase();
+          if (lowerText.includes('vermelho') || lowerText.includes('emergência')) return 'red';
+          if (lowerText.includes('laranja') || lowerText.includes('muito urgente')) return 'orange';
+          if (lowerText.includes('amarelo') || lowerText.includes('urgente')) return 'yellow';
+          if (lowerText.includes('verde') || lowerText.includes('pouco urgente')) return 'green';
+          if (lowerText.includes('azul') || lowerText.includes('não urgente')) return 'blue';
+          return 'gray';
+        };
+
+        const getCardStyles = (color) => {
+          switch (color) {
+            case 'red': return "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.4)] bg-red-950/30";
+            case 'orange': return "border-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.4)] bg-orange-950/30";
+            case 'yellow': return "border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.4)] bg-yellow-950/30";
+            case 'green': return "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)] bg-green-950/30";
+            case 'blue': return "border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.4)] bg-blue-950/30";
+            default: return "border-neon-500 shadow-[0_0_30px_rgba(74,222,128,0.3)]";
+          }
+        };
+
+        const runTriage = async () => {
+          setIsAnalyzing(true);
+          setTriageResult(null);
+          setRiskColor('gray');
+
+          const prompt = `ATUAR COMO ENFERMEIRO CLASSIFICADOR (Protocolo Manchester) para UBS Santo Afonso.
+          CONTEXTO: O usuário inseriu os sintomas conforme relato do paciente.
+          SINTOMAS: "${symptoms}"
+          SINAIS VITAIS: "${vitals}"
+          
+          Gere um relatório contendo:
+          1. 📝 TRADUÇÃO TÉCNICA (ANAMNESE): Converta termos leigos para médicos.
+          2. 🎨 CLASSIFICAÇÃO DE RISCO (COR).
+          3. ⏱️ TEMPO ALVO.
+          4. 🏥 AÇÃO IMEDIATA.
+          5. ⚖️ JUSTIFICATIVA.`;
+
+          try {
+            const response = await onAnalyze(prompt);
+            setTriageResult(response);
+            setRiskColor(determineColor(response));
+          } catch (e) {
+            setTriageResult("Erro na análise.");
+          } finally {
+            setIsAnalyzing(false);
+          }
+        };
+
+        return (
+          <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pb-10">
+            <NeonCard title="Assistente de Triagem">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-neon-400 font-bold mb-2">Queixa / Sintomas</label>
+                  <textarea 
+                    className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-neon-500 outline-none h-32"
+                    placeholder="Ex: Dor de barriga forte..."
+                    value={symptoms}
+                    onChange={(e) => setSymptoms(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-neon-400 font-bold mb-2">Sinais Vitais</label>
+                  <input 
+                    type="text"
+                    className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-neon-500 outline-none"
+                    placeholder="Ex: PA 140/90..."
+                    value={vitals}
+                    onChange={(e) => setVitals(e.target.value)}
+                  />
+                </div>
+                <NeonButton onClick={runTriage} disabled={!symptoms || isAnalyzing} className="w-full mt-4">
+                  {isAnalyzing ? "Analisando..." : "Analisar Risco"}
+                </NeonButton>
+              </div>
+            </NeonCard>
+
+            {triageResult && (
+              <NeonCard className={`border-2 transition-all duration-500 ${getCardStyles(riskColor)}`}>
+                <div className="flex justify-between items-center mb-4 border-b border-white/20 pb-2">
+                  <h3 className="text-xl font-bold text-white">Relatório de Triagem</h3>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-black/50 border border-white/30 text-white">
+                    {riskColor.toUpperCase()}
+                  </span>
+                </div>
+                <div className="whitespace-pre-wrap text-gray-100 text-sm md:text-base">{triageResult}</div>
+                <div className="mt-4 pt-4 border-t border-white/10 flex justify-end">
+                  <button onClick={onNavigateToChat} className="text-sm text-neon-400 hover:text-white underline flex items-center gap-1">
+                    <Icons.Chat /> Continuar no Chat
+                  </button>
+                </div>
+              </NeonCard>
+            )}
+          </div>
+        );
+      };
+
+      // 3. PRESCRIÇÃO
+      const PrescriptionSection = ({ onAnalyze }) => {
+        const [patientName, setPatientName] = useState('');
+        const [medication, setMedication] = useState('');
+        const [isLoading, setIsLoading] = useState(false);
+        const [generatedData, setGeneratedData] = useState(null);
+
+        const handleGenerate = async () => {
+          setIsLoading(true);
+          const prompt = `ATUAR COMO FARMACÊUTICO E INTÉRPRETE DE LIBRAS.
+          Paciente: ${patientName}
+          Prescrição: ${medication}
+
+          Gere uma resposta estruturada contendo:
+          1. A prescrição original.
+          2. Tradução para GLOSA DE LIBRAS (Caixa Alta).
+          3. Separe os passos visuais com "---".
+          `;
+
+          try {
+            const response = await onAnalyze(prompt);
+            const parts = response.split('---').map(s => s.trim()).filter(s => s.length > 0);
+            setGeneratedData({ raw: response, steps: parts });
+          } catch (error) { console.error(error); } finally { setIsLoading(false); }
+        };
+
+        const handleDownloadPDF = () => {
+          const element = document.getElementById('prescription-paper');
+          if (!element) return;
+          const opt = {
+            margin: 0,
+            filename: `Prescricao_${patientName.replace(/\s+/g, '_')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          };
+          html2pdf().set(opt).from(element).save();
+        };
+
+        const getIconForText = (text) => {
+          const t = text.toLowerCase();
+          if (t.includes('água') || t.includes('beber')) return '🥤';
+          if (t.includes('tomar') || t.includes('remedio')) return '💊';
+          if (t.includes('hora') || t.includes('tempo')) return '⏰';
+          if (t.includes('manhã')) return '☀️';
+          if (t.includes('noite')) return '🌙';
+          return '📋';
+        };
+
+        return (
+          <div className="flex flex-col gap-6 pb-10">
+            <div className="print:hidden max-w-4xl mx-auto w-full">
+              <NeonCard title="Prescrição Inclusiva">
+                <div className="grid gap-4">
+                  <input className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white outline-none" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Nome do Paciente" />
+                  <textarea className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white outline-none h-32" value={medication} onChange={e => setMedication(e.target.value)} placeholder="Prescrição Médica..." />
+                  <NeonButton onClick={handleGenerate} disabled={isLoading || !patientName} icon={isLoading ? <NeonLoader /> : <Icons.Pill />}>
+                    {isLoading ? "Gerando..." : "Traduzir & Gerar PDF"}
+                  </NeonButton>
+                </div>
+              </NeonCard>
+            </div>
+
+            {generatedData && (
+              <div className="flex flex-col items-center gap-4 animate-fade-in">
+                <div className="print:hidden w-full flex justify-end gap-3 max-w-[210mm]">
+                  <NeonButton onClick={handleDownloadPDF} variant="primary" icon={<Icons.Download />}>Baixar PDF</NeonButton>
+                  <NeonButton onClick={() => window.print()} variant="secondary" icon={<Icons.Print />}>Imprimir</NeonButton>
+                </div>
+
+                <div id="prescription-paper" className="bg-white text-black w-full md:w-[210mm] min-h-[297mm] p-[15mm] shadow-2xl rounded-sm relative flex flex-col justify-between">
+                  <div>
+                    <div className="border-b-2 border-gray-800 pb-4 mb-4 flex justify-between">
+                       <div><h1 className="text-xl font-bold uppercase">{UBS_NAME}</h1><p className="text-xs text-gray-600">SUS - Prescrição Assistida</p></div>
+                       <div className="text-right"><p className="font-bold text-sm">Data: {new Date().toLocaleDateString()}</p></div>
+                    </div>
+                    <div className="mb-6 bg-gray-100 p-3 rounded border border-gray-300">
+                      <p className="text-[10px] text-gray-500 uppercase font-bold">Paciente</p>
+                      <h2 className="text-lg font-bold">{patientName}</h2>
+                    </div>
+                    <div className="grid grid-cols-5 gap-6 h-full">
+                      <div className="col-span-2 border-r border-gray-300 pr-4">
+                        <h3 className="font-bold text-sm mb-3 border-b border-gray-200 pb-1 uppercase">⚕️ Prescrição</h3>
+                        <div className="whitespace-pre-wrap font-mono text-xs text-justify">{medication}</div>
+                      </div>
+                      <div className="col-span-3">
+                        <h3 className="font-bold text-sm mb-3 border-b border-gray-200 pb-1 uppercase text-blue-800">👋 Instruções Visuais (Libras)</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          {generatedData.steps.length > 1 ? generatedData.steps.map((step, idx) => (
+                             (!step.includes(medication) || idx > 0) && (
+                               <div key={idx} className="flex flex-col items-center text-center p-2 bg-blue-50 rounded border border-blue-100 shadow-sm break-inside-avoid">
+                                 <div className="w-full flex justify-between items-start mb-1"><span className="text-[10px] font-bold text-blue-900 bg-blue-100 px-1 rounded">Passo {idx + 1}</span><span className="text-2xl">{getIconForText(step)}</span></div>
+                                 <p className="text-xs font-semibold text-gray-800 w-full mt-1 border-t border-blue-200 pt-1">{step.replace(/\*\*/g, '')}</p>
+                               </div>
+                             )
+                          )) : <div className="whitespace-pre-wrap text-xs col-span-2">{generatedData.raw}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-300 pt-4 text-center mt-6">
+                    <p className="text-[10px] text-gray-500 mb-6">Ferramenta de apoio. Consulte o farmacêutico.</p>
+                    <div className="flex justify-center gap-12">
+                      <div className="w-40 border-t border-black pt-1 text-[10px]">Assinatura</div>
+                      <div className="w-40 border-t border-black pt-1 text-[10px]">Carimbo</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // 4. CHAT
+      const ChatSection = ({ messages, isLoading, onSendMessage }) => {
+        const [input, setInput] = useState('');
+        const endRef = useRef(null);
+
+        useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+        return (
+          <div className="flex flex-col h-[calc(100vh-8rem)]">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map((msg) => (
+                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-4 rounded-2xl relative ${msg.role === 'user' ? 'bg-neon-500/20 border border-neon-500/50 text-white' : 'bg-dark-800 border border-gray-700 text-gray-200'}`}>
+                    <div className="whitespace-pre-wrap">{msg.text}</div>
+                  </div>
+                </div>
+              ))}
+              {isLoading && <NeonLoader />}
+              <div ref={endRef} />
+            </div>
+            <div className="p-4 bg-dark-900/90 border-t border-neon-500/20">
+              <div className="relative flex items-center">
+                <input className="w-full bg-dark-800 text-white border border-gray-600 rounded-full py-4 pl-6 pr-14 outline-none focus:border-neon-500" placeholder="Digite..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (onSendMessage(input), setInput(''))} />
+                <button onClick={() => { onSendMessage(input); setInput(''); }} className="absolute right-2 bg-neon-500 text-black p-2 rounded-full hover:bg-neon-400"><Icons.Send /></button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // --- APP PRINCIPAL ---
+      const App = () => {
+        const [activeSection, setActiveSection] = useState('DASHBOARD');
+        const [messages, setMessages] = useState([{ id: 'init', role: 'model', text: `Olá, equipe da ${UBS_NAME}. Como posso auxiliar hoje?` }]);
+        const [isLoading, setIsLoading] = useState(false);
+
+        const handleSendMessage = async (text) => {
+          if (!text.trim()) return;
+          const userMsg = { id: Date.now(), role: 'user', text };
+          setMessages(prev => [...prev, userMsg]);
+          setIsLoading(true);
+          const response = await sendMessageToGemini(text, [...messages, userMsg]);
+          setMessages(prev => [...prev, { id: Date.now() + 1, role: 'model', text: response }]);
+          setIsLoading(false);
+          return response;
+        };
+
+        const renderContent = () => {
+           switch(activeSection) {
+             case 'DASHBOARD': return <DashboardSection onNavigate={setActiveSection} onQuickAction={handleSendMessage} />;
+             case 'TRIAGE': return <TriageSection onAnalyze={(p) => handleSendMessage(p)} onNavigateToChat={() => setActiveSection('ASSISTANT')} />;
+             case 'PRESCRIPTION': return <PrescriptionSection onAnalyze={(p) => handleSendMessage(p)} />;
+             case 'ASSISTANT': return <ChatSection messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage} />;
+             default: return <div className="text-white">Em desenvolvimento...</div>;
+           }
+        };
+
+        return (
+          <div className="flex h-screen bg-dark-900 text-gray-100 font-sans overflow-hidden">
+            {/* Sidebar */}
+            <aside className="w-64 bg-dark-900 border-r border-neon-500/20 flex flex-col hidden md:flex print:hidden">
+              <div className="p-6"><h1 className="text-neon-400 font-bold text-2xl">UBS <span className="text-white">AI</span></h1></div>
+              <nav className="flex-1 py-6 space-y-2 px-3">
+                {[
+                  { id: 'DASHBOARD', label: 'Painel', icon: <Icons.Dashboard /> },
+                  { id: 'TRIAGE', label: 'Triagem', icon: <Icons.Triage /> },
+                  { id: 'PRESCRIPTION', label: 'Prescrição', icon: <Icons.Pill /> },
+                  { id: 'ASSISTANT', label: 'Chat Assistente', icon: <Icons.Chat /> },
+                ].map((item) => (
+                  <button key={item.id} onClick={() => setActiveSection(item.id)} className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all ${activeSection === item.id ? 'bg-neon-500/10 text-neon-400 border border-neon-500/50' : 'text-gray-400 hover:bg-dark-800'}`}>
+                    <span className="text-xl">{item.icon}</span><span>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
+            </aside>
+
+            {/* Mobile Header */}
+            <div className="md:hidden fixed top-0 w-full bg-dark-900 border-b border-neon-500/30 z-50 p-4 flex justify-between print:hidden">
+                <h1 className="text-neon-400 font-bold">UBS SANTO AFONSO</h1>
+                <div className="flex gap-2">
+                   <button onClick={() => setActiveSection('DASHBOARD')}>🏠</button>
+                   <button onClick={() => setActiveSection('ASSISTANT')}>💬</button>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col pt-16 md:pt-0 w-full relative">
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 print:p-0 print:bg-white print:overflow-visible bg-gradient-to-b from-dark-900 to-dark-800">
+                 {renderContent()}
+              </div>
+            </main>
+          </div>
+        );
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
