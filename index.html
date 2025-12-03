@@ -124,7 +124,8 @@
       const { useState, useEffect, useRef } = React;
 
       // --- CONFIGURAÇÃO API ---
-      const API_KEY = "AIzaSyBWatdlO1sSVa-0H00vQIKp-d7mXHISVRY"; 
+      // A chave é tratada com .trim() para evitar espaços acidentais
+      const API_KEY = "AIzaSyBWatdlO1sSVa-0H00vQIKp-d7mXHISVRY".trim(); 
       const ai = new GoogleGenAI({ apiKey: API_KEY });
       const UBS_NAME = "UBS SANTO AFONSO";
 
@@ -197,7 +198,19 @@
       const sendMessageToGemini = async (currentMessage, history) => {
         try {
           const modelId = 'gemini-2.5-flash';
-          const chatHistory = history.map(msg => ({
+          
+          // Correção Crítica: O histórico não pode conter a mensagem atual (que vai no parâmetro 'message')
+          // E não pode começar com 'model' se a API exigir alternância estrita User-Model.
+          // Vamos pegar todas as mensagens EXCETO a última (que é a atual do usuário sendo enviada agora)
+          const previousMessages = history.slice(0, -1);
+          
+          // Filtramos a primeira mensagem se for do 'model' (Saudação inicial), pois a API pode rejeitar histórico começando com model
+          const validHistory = previousMessages.filter((msg, index) => {
+             if (index === 0 && msg.role === 'model') return false;
+             return true;
+          });
+
+          const chatHistory = validHistory.map(msg => ({
             role: msg.role === 'user' ? 'user' : 'model',
             parts: [{ text: msg.text }],
           }));
@@ -217,8 +230,9 @@
 
           return result.text;
         } catch (error) {
-          console.error("Erro ao comunicar com Gemini:", error);
-          return "Erro na comunicação com a IA. Verifique sua conexão.";
+          console.error("Erro detalhado API:", error);
+          // Retorna o erro real para facilitar o debug visual
+          return `⚠️ Erro de Sistema: ${error.message || "Falha na conexão"}. \n\nDica: Verifique se sua chave API tem permissão para o modelo 'gemini-2.5-flash' e se não há restrições de Referer no Google Cloud Console.`;
         }
       };
 
@@ -558,6 +572,7 @@
           const userMsg = { id: Date.now(), role: 'user', text };
           setMessages(prev => [...prev, userMsg]);
           setIsLoading(true);
+          // Passamos o histórico COMPLETO, incluindo a mensagem nova, para a função
           const response = await sendMessageToGemini(text, [...messages, userMsg]);
           setMessages(prev => [...prev, { id: Date.now() + 1, role: 'model', text: response }]);
           setIsLoading(false);
