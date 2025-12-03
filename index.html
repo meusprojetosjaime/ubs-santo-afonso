@@ -123,10 +123,7 @@
       import { GoogleGenAI } from "@google/genai";
       const { useState, useEffect, useRef } = React;
 
-      // --- CONFIGURAÇÃO API ---
-      // A chave é tratada com .trim() para evitar espaços acidentais
-      const API_KEY = "AIzaSyBWatdlO1sSVa-0H00vQIKp-d7mXHISVRY".trim(); 
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      // --- CONFIGURAÇÃO API DINÂMICA ---
       const UBS_NAME = "UBS SANTO AFONSO";
 
       // --- COMPONENTES UI (NeonUI) ---
@@ -180,7 +177,8 @@
         Pill: () => "💊",
         Syringe: () => "💉",
         Print: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>,
-        Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
+        Key: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
       };
 
       // --- SERVIÇO GEMINI ---
@@ -195,16 +193,15 @@
       IMPORTANTE: Sempre inclua um aviso de isenção de responsabilidade (disclaimer). A decisão final é sempre do profissional humano.
       `;
 
-      const sendMessageToGemini = async (currentMessage, history) => {
+      // Inicialização da IA dentro da função para permitir troca de chave
+      const sendMessageToGemini = async (currentMessage, history, apiKey) => {
+        if (!apiKey) throw new Error("Chave API não configurada.");
+        
         try {
+          const ai = new GoogleGenAI({ apiKey: apiKey });
           const modelId = 'gemini-2.5-flash';
           
-          // Correção Crítica: O histórico não pode conter a mensagem atual (que vai no parâmetro 'message')
-          // E não pode começar com 'model' se a API exigir alternância estrita User-Model.
-          // Vamos pegar todas as mensagens EXCETO a última (que é a atual do usuário sendo enviada agora)
           const previousMessages = history.slice(0, -1);
-          
-          // Filtramos a primeira mensagem se for do 'model' (Saudação inicial), pois a API pode rejeitar histórico começando com model
           const validHistory = previousMessages.filter((msg, index) => {
              if (index === 0 && msg.role === 'model') return false;
              return true;
@@ -231,9 +228,57 @@
           return result.text;
         } catch (error) {
           console.error("Erro detalhado API:", error);
-          // Retorna o erro real para facilitar o debug visual
-          return `⚠️ Erro de Sistema: ${error.message || "Falha na conexão"}. \n\nDica: Verifique se sua chave API tem permissão para o modelo 'gemini-2.5-flash' e se não há restrições de Referer no Google Cloud Console.`;
+          if (error.toString().includes("403") || error.toString().includes("key")) {
+             throw new Error("API_KEY_INVALID");
+          }
+          return `⚠️ Erro de Sistema: ${error.message || "Falha na conexão"}.`;
         }
+      };
+
+      // --- TELA DE CONFIGURAÇÃO (API KEY) ---
+      const SetupScreen = ({ onSave }) => {
+        const [keyInput, setKeyInput] = useState('');
+
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-dark-900 p-4">
+            <div className="max-w-md w-full animate-fade-in">
+              <NeonCard title="Configuração Inicial" className="border-neon-500">
+                <div className="flex flex-col items-center mb-6">
+                   <div className="w-16 h-16 bg-neon-500/20 rounded-full flex items-center justify-center mb-4">
+                      <Icons.Key />
+                   </div>
+                   <h2 className="text-xl font-bold text-white text-center">Ativação do Sistema</h2>
+                   <p className="text-gray-400 text-center text-sm mt-2">
+                     Para segurança do GitHub Pages, a Chave API deve ser inserida localmente. Ela ficará salva apenas no seu navegador.
+                   </p>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-neon-400 text-xs font-bold mb-1 uppercase">Google Gemini API Key</label>
+                    <input 
+                      type="password" 
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      placeholder="Cole sua chave AIza..."
+                      className="w-full bg-black border border-gray-700 rounded p-3 text-white focus:border-neon-500 outline-none"
+                    />
+                  </div>
+                  
+                  <NeonButton onClick={() => onSave(keyInput)} disabled={!keyInput} className="w-full">
+                    Acessar Sistema
+                  </NeonButton>
+
+                  <div className="text-center pt-4 border-t border-gray-800">
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-neon-500 hover:underline">
+                      Gerar nova chave no Google AI Studio ↗
+                    </a>
+                  </div>
+                </div>
+              </NeonCard>
+            </div>
+          </div>
+        );
       };
 
       // --- COMPONENTES DA APLICAÇÃO ---
@@ -563,27 +608,66 @@
 
       // --- APP PRINCIPAL ---
       const App = () => {
+        const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
         const [activeSection, setActiveSection] = useState('DASHBOARD');
         const [messages, setMessages] = useState([{ id: 'init', role: 'model', text: `Olá, equipe da ${UBS_NAME}. Como posso auxiliar hoje?` }]);
         const [isLoading, setIsLoading] = useState(false);
+
+        // Se não tiver chave, mostra tela de setup
+        if (!apiKey) {
+           return <SetupScreen onSave={(key) => {
+               localStorage.setItem('gemini_api_key', key.trim());
+               setApiKey(key.trim());
+           }} />;
+        }
+
+        const logout = () => {
+           localStorage.removeItem('gemini_api_key');
+           setApiKey('');
+        };
 
         const handleSendMessage = async (text) => {
           if (!text.trim()) return;
           const userMsg = { id: Date.now(), role: 'user', text };
           setMessages(prev => [...prev, userMsg]);
           setIsLoading(true);
-          // Passamos o histórico COMPLETO, incluindo a mensagem nova, para a função
-          const response = await sendMessageToGemini(text, [...messages, userMsg]);
-          setMessages(prev => [...prev, { id: Date.now() + 1, role: 'model', text: response }]);
-          setIsLoading(false);
-          return response;
+          
+          try {
+              const response = await sendMessageToGemini(text, [...messages, userMsg], apiKey);
+              setMessages(prev => [...prev, { id: Date.now() + 1, role: 'model', text: response }]);
+          } catch (e) {
+              if (e.message === "API_KEY_INVALID") {
+                  alert("Chave API bloqueada ou inválida. Por favor, insira uma nova.");
+                  logout();
+              } else {
+                  setMessages(prev => [...prev, { id: Date.now() + 1, role: 'model', text: e.message }]);
+              }
+          } finally {
+             setIsLoading(false);
+          }
+          return; // Response handled in state
+        };
+
+        // Wrapper para funções que esperam retorno imediato (triagem)
+        const handleAnalyze = async (prompt) => {
+            try {
+               // Para análise, usamos uma chamada direta sem salvar no chat visual principal se não quisermos
+               return await sendMessageToGemini(prompt, [], apiKey);
+            } catch (e) {
+               if (e.message === "API_KEY_INVALID") {
+                  alert("Chave API bloqueada ou inválida. Reiniciando...");
+                  logout();
+                  return "Erro de Autenticação";
+               }
+               throw e;
+            }
         };
 
         const renderContent = () => {
            switch(activeSection) {
              case 'DASHBOARD': return <DashboardSection onNavigate={setActiveSection} onQuickAction={handleSendMessage} />;
-             case 'TRIAGE': return <TriageSection onAnalyze={(p) => handleSendMessage(p)} onNavigateToChat={() => setActiveSection('ASSISTANT')} />;
-             case 'PRESCRIPTION': return <PrescriptionSection onAnalyze={(p) => handleSendMessage(p)} />;
+             case 'TRIAGE': return <TriageSection onAnalyze={handleAnalyze} onNavigateToChat={() => setActiveSection('ASSISTANT')} />;
+             case 'PRESCRIPTION': return <PrescriptionSection onAnalyze={handleAnalyze} />;
              case 'ASSISTANT': return <ChatSection messages={messages} isLoading={isLoading} onSendMessage={handleSendMessage} />;
              default: return <div className="text-white">Em desenvolvimento...</div>;
            }
@@ -606,6 +690,9 @@
                   </button>
                 ))}
               </nav>
+              <div className="p-4 border-t border-gray-800">
+                 <button onClick={logout} className="text-xs text-red-400 hover:text-red-300 w-full text-left p-2">Sair / Trocar Chave</button>
+              </div>
             </aside>
 
             {/* Mobile Header */}
